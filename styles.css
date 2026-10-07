@@ -33,9 +33,10 @@ a{color:inherit}
 .nav-wrap{max-width:var(--max);margin:auto;height:78px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:28px}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
 .brand-logo,.footer-logo,.hero-logo{
-  object-fit:contain;
+  object-fit:cover;
   display:block;
   background:transparent;
+  clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);
 }
 .brand-logo{width:40px;height:40px;flex:0 0 auto;filter:none}
 .footer-logo{width:44px;height:44px;flex:0 0 auto;filter:none}
