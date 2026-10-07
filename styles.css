@@ -244,3 +244,16 @@ footer>a{text-decoration:none;color:var(--gold-2)}
   .lineage-origin{margin-bottom:20px}
   .emblem-grid{gap:16px}
 }
+
+/* Pekak Gunung family archive photo */
+.founder-photo{margin:0}
+.founder-photo img{width:100%;height:100%;min-height:300px;max-height:390px;object-fit:cover;object-position:center top;display:block;border:1px solid var(--line);filter:sepia(.08) contrast(1.03)}
+.founder-photo figcaption,.bio-hero-photo figcaption{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.4}
+.bio-hero-photo{margin:0 0 38px;display:grid;grid-template-columns:minmax(220px,340px) 1fr;gap:22px;align-items:end}
+.bio-hero-photo img{width:100%;max-height:520px;object-fit:cover;object-position:center top;border:1px solid var(--line);display:block}
+.bio-hero-photo figcaption{padding-bottom:8px}
+@media(max-width:820px){
+  .founder-photo img{max-height:none;aspect-ratio:3/4}
+  .bio-hero-photo{grid-template-columns:1fr}
+  .bio-hero-photo img{max-width:420px}
+}
