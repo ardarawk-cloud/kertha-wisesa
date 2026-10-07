@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 169 168" role="img" aria-label="Lambang PPS Kertha Wisesa">
+  <defs>
+    <clipPath id="pentagon">
+      <polygon points="83,3 166,63 137,166 30,166 2,64"/>
+    </clipPath>
+  </defs>
+  <image href="kertha-wisesa-logo.webp" x="0" y="0" width="169" height="168" preserveAspectRatio="xMidYMid slice" clip-path="url(#pentagon)"/>
+</svg>
