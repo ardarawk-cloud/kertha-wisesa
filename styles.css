@@ -271,3 +271,17 @@ footer>a{text-decoration:none;color:var(--gold-2)}
 @media(max-width:820px){
   .research-grid,.local-grid{grid-template-columns:1fr}
 }
+
+/* Family lineage expansion */
+.lineage-branch.lineage-four{grid-template-columns:repeat(4,1fr);gap:16px}
+.lineage-branch.lineage-four:before{left:12.5%;right:12.5%}
+.lineage-branch.lineage-four article{min-width:0}
+.unknown-relative{border-style:dashed !important;opacity:.92}
+@media(max-width:1100px){
+  .lineage-branch.lineage-four{grid-template-columns:repeat(2,1fr)}
+  .lineage-branch.lineage-four:before{display:none}
+  .lineage-branch.lineage-four article:before{display:none}
+}
+@media(max-width:680px){
+  .lineage-branch.lineage-four{grid-template-columns:1fr}
+}
