@@ -32,15 +32,14 @@ a{color:inherit}
 }
 .nav-wrap{max-width:var(--max);margin:auto;height:78px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:28px}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
-.brand-mark{
-  width:42px;height:42px;border:1px solid var(--gold);display:grid;place-items:center;
-  font-family:"Cormorant Garamond",serif;font-weight:700;color:var(--gold-2);letter-spacing:.06em;
-  transform:rotate(45deg)
+.brand-logo,.footer-logo,.hero-logo{
+  object-fit:cover;
+  clip-path:polygon(50% 0,100% 39%,82% 100%,18% 100%,0 39%);
+  filter:drop-shadow(0 5px 12px rgba(0,0,0,.35));
 }
-.brand-mark::first-line{transform:rotate(-45deg)}
-.brand .brand-mark,.footer-brand .brand-mark{position:relative}
-.brand .brand-mark{font-size:0}
-.brand .brand-mark:after,.footer-brand .brand-mark:after{content:"KW";font-size:14px;transform:rotate(-45deg);position:absolute}
+.brand-logo{width:54px;height:54px;flex:0 0 auto}
+.footer-logo{width:54px;height:54px;flex:0 0 auto}
+.hero-logo{width:112px;height:112px;margin:0 auto 30px;display:block}
 .brand strong{display:block;font-family:"Cormorant Garamond",serif;font-size:22px;line-height:1}
 .brand small{font-size:10px;text-transform:uppercase;letter-spacing:.22em;color:var(--muted)}
 .nav{display:flex;gap:26px;align-items:center}
