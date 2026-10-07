@@ -335,3 +335,16 @@ footer>a{text-decoration:none;color:var(--gold-2)}
   .athlete-cta{align-items:flex-start;flex-direction:column}
   .athlete-era-head h2,.athlete-sources h2{font-size:36px}
 }
+
+
+/* Source links: keep archive rows directly clickable above decorative layers */
+.sources{position:relative;z-index:3;isolation:isolate}
+.source-list{position:relative;z-index:4;pointer-events:auto}
+.source-list a{
+  position:relative;
+  z-index:5;
+  pointer-events:auto;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.source-list a > *{pointer-events:none}
