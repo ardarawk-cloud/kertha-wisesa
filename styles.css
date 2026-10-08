@@ -449,3 +449,19 @@ footer>a{text-decoration:none;color:var(--gold-2)}
   color:var(--muted);
 }
 .site-responsibility small{color:var(--muted)}
+
+/* Family archive photo: preserve the complete original I Gede Regig portrait */
+.founder-photo--regig img{
+  display:block;
+  width:100%;
+  height:auto;
+  min-height:0;
+  max-height:none;
+  object-fit:contain;
+}
+.bio-hero-photo--regig img{
+  width:100%;
+  height:auto;
+  max-height:none;
+  object-fit:contain;
+}
