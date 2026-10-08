@@ -110,6 +110,10 @@ blockquote{font-family:"Cormorant Garamond",serif;font-size:28px;line-height:1.1
 .founder-grid{display:grid;gap:20px}
 .founder-card{border:1px solid var(--line);padding:28px;display:grid;grid-template-columns:140px 1fr;gap:28px;background:rgba(255,255,255,.015)}
 .founder-card.feature{grid-template-columns:220px 1fr;padding:38px}
+.founder-card.portrait-stack{grid-template-columns:1fr}
+.founder-card.portrait-stack .founder-photo{width:min(100%,340px);margin:0 auto}
+.founder-card.portrait-stack .founder-photo img{width:100%;height:auto;min-height:0;max-height:none;aspect-ratio:auto;object-fit:contain}
+.founder-card.portrait-stack .founder-content{width:100%}
 .portrait-placeholder{
   min-height:180px;border:1px solid var(--line);display:grid;place-items:center;
   background:
