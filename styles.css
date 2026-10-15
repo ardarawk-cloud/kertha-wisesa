@@ -33,11 +33,9 @@ a{color:inherit}
 .nav-wrap{max-width:var(--max);margin:auto;height:78px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:28px}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
 .brand-logo,.footer-logo,.hero-logo,.emblem-visual img{
-  object-fit:cover;
+  object-fit:contain;
   display:block;
   background:transparent !important;
-  -webkit-clip-path:polygon(49.1% 1.2%,98.2% 38.1%,81.1% 98.8%,17.2% 98.8%,1.2% 38.1%);
-  clip-path:polygon(49.1% 1.2%,98.2% 38.1%,81.1% 98.8%,17.2% 98.8%,1.2% 38.1%);
 }
 .brand-logo{width:40px;height:40px;flex:0 0 auto;filter:none}
 .footer-logo{width:44px;height:44px;flex:0 0 auto;filter:none}
