@@ -29,12 +29,25 @@ async function directoryRows(e,kind,token=null){
  const rows=await q(e,sql,...params,kind,...(token?[token]:[])).all();return rows.results;
 }
 
+
+function autoPublication(e,actor,kind,selector,value,ts){
+ // The record is selected by its freshly generated unique photo key or officer card token.
+ const tables={athletes:'members',srikandi:'srikandi',direct:'officer_direct',linked:'officers'};
+ const table=tables[kind],officer=kind==='direct'||kind==='linked',group=officer?'officers':kind,ref=kind==='direct'?"'d'||id":"CAST(id AS TEXT)";
+ if(!table||!['photo_key','card_token'].includes(selector))throw Error('Invalid publication source');
+ const where=" FROM "+table+" WHERE unit_id=? AND "+selector+"=?";
+ const name=officer?q(e,"INSERT INTO public_officer_approvals(unit_id,officer_ref,approved_at,approved_by) SELECT unit_id,"+ref+",?,?"+where,ts,actor.id,actor.unit_id,value):q(e,"INSERT INTO public_member_approvals(unit_id,kind,member_id,approved_at,approved_by) SELECT unit_id,?,id,?,?"+where,group,ts,actor.id,actor.unit_id,value);
+ const portrait=q(e,"INSERT INTO public_photo_approvals(unit_id,kind,record_ref,token,approved_at,approved_by) SELECT unit_id,?,"+ref+",?,?,?"+where,group,rand(),ts,actor.id,actor.unit_id,value);
+ const audit=q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) SELECT ?,unit_id,?,"+ref+where,actor.id,'auto_publish_'+group,actor.unit_id,value);
+ return [name,portrait,audit];
+}
+
 async function handleApi(r,e){
  const u=new URL(r.url), p=u.pathname,m=r.method;
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.8',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.9',database:'connected',photos:'connected',registration:false,admin_only:true})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
 
  if(p==='/api/public/organization'&&m==='GET'){
@@ -69,13 +82,14 @@ async function handleApi(r,e){
   let name=g('name',120),place=g('birth_place',100),date=g('birth_date',10),gender=g('gender',20),address=g('address',400),wa=g('whatsapp',25),year=Number(g('joined_year',4)),belt=g('belt',60),guardian=g('guardian_name',120),emergency=g('emergency_contact',100),l=login(f.get('login')),pw=f.get('password');
   let dob=new Date(date+'T00:00:00Z'),now=new Date(),adult=new Date(Date.UTC(now.getUTCFullYear()-18,now.getUTCMonth(),now.getUTCDate())),minor=dob>adult;
   if(!name||!place||! /^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+dob)||dob.toISOString().slice(0,10)!==date||dob>now||dob.getUTCFullYear()<1900||!['Laki-laki','Perempuan'].includes(gender)||!address||!/^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>now.getUTCFullYear()||!belt||!emergency||(!staff&&(!l||!goodpass(pw)))||f.get('consent')!=='yes'||(minor&&(!guardian||f.get('guardian_consent')!=='yes')))return err(400,'Periksa seluruh data dan persetujuan wali untuk anak');
+  if(f.get('publish_public')==='yes'&&minor)return err(400,'Identitas atlet anak tetap privat. Hilangkan centang publikasi.');
   if(!staff&&await q(e,'SELECT id FROM accounts WHERE login=?',l).first())return err(409,'Login tidak tersedia');
   let file=f.get('photo');if(!file||typeof file.arrayBuffer!=='function'||file.size<12||file.size>2000000)return err(400,'Foto wajib, maksimal 2 MB');
   let bytes=new Uint8Array(await file.arrayBuffer()),type=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP'?'image/webp':null;
   if(!type)return err(400,'Gunakan foto JPG, PNG atau WebP');
   let key=rand(),s=rand(),h=staff?null:await password(pw,s),aid=crypto.randomUUID(),ts=now.toISOString();
   let put=await photo(e,key,'PUT',bytes,type);if(!put.ok)return err(503,'Penyimpanan foto belum tersedia');
-  if(staff){try{let rows=await e.DB.batch([q(e,'INSERT INTO members(unit_id,full_name,birth_place,birth_date,gender,address,whatsapp,joined_year,belt,guardian_name,emergency_contact,consent_at,guardian_consent_at,photo_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id',actor.unit_id,name,place,date,gender,address,wa,year,belt,guardian||null,emergency,ts,minor?ts:null,key),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?, 'create_member',last_insert_rowid())",actor.id,actor.unit_id)]);return j({ok:true,id:rows[0].results[0].id,status:'pending'},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Penyimpanan anggota gagal')}}
+  if(staff){try{let rows=await e.DB.batch([q(e,'INSERT INTO members(unit_id,full_name,birth_place,birth_date,gender,address,whatsapp,joined_year,belt,guardian_name,emergency_contact,consent_at,guardian_consent_at,photo_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id',actor.unit_id,name,place,date,gender,address,wa,year,belt,guardian||null,emergency,ts,minor?ts:null,key),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?, 'create_member',last_insert_rowid())",actor.id,actor.unit_id),...(f.get('publish_public')==='yes'&&!minor?autoPublication(e,actor,'athletes','photo_key',key,ts):[])]);return j({ok:true,id:rows[0].results[0].id,status:'pending'},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Penyimpanan anggota gagal')}}
   try{await e.DB.batch([q(e,'INSERT INTO members(unit_id,full_name,birth_place,birth_date,gender,address,whatsapp,joined_year,belt,guardian_name,emergency_contact,consent_at,guardian_consent_at,photo_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)','CLG',name,place,date,gender,address,wa,year,belt,guardian||null,emergency,ts,minor?ts:null,key),q(e,"INSERT INTO accounts(id,member_id,unit_id,login,password_hash,password_salt,role) VALUES(?,last_insert_rowid(),'CLG',?,?,?,'member')",aid,l,h,s)]);}catch(ex){await photo(e,key,'DELETE');return err(409,'Pendaftaran gagal, coba login lain')}
   return j({ok:true,status:'pending'},201);
  }
@@ -118,7 +132,7 @@ async function handleApi(r,e){
   if(!name||!['Istri pengurus','Ibu atlet','Keluarga besar KW','Anggota Srikandi'].includes(category)||! /^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>new Date().getFullYear()||f.get('consent')!=='yes')return err(400,'Periksa data dan persetujuan anggota');
   let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
   let key=rand();await photo(e,key,'PUT',img.bytes,img.type);
-  try{let rows=await e.DB.batch([q(e,'INSERT INTO srikandi(unit_id,full_name,category,joined_year,whatsapp,photo_key,consent_at) VALUES(?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,category,year,wa,key,new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_srikandi',last_insert_rowid())",a.id,a.unit_id)]);return j({ok:true,id:rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan data')}
+  try{let rows=await e.DB.batch([q(e,'INSERT INTO srikandi(unit_id,full_name,category,joined_year,whatsapp,photo_key,consent_at) VALUES(?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,category,year,wa,key,new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_srikandi',last_insert_rowid())",a.id,a.unit_id),...(f.get('publish_public')==='yes'?autoPublication(e,a,'srikandi','photo_key',key,new Date().toISOString()):[])]);return j({ok:true,id:rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan data')}
  }
  let sr=p.match(/^\/api\/srikandi\/(\d+)(?:\/(photo|approve|status))?$/);
  if(sr){
@@ -145,7 +159,7 @@ async function handleApi(r,e){
   if(!name||! /^\+?[0-9]{8,16}$/.test(wa)||!position||!dateOk(start)||!dateOk(end)||start>end||f.get('consent')!=='yes')return err(400,'Periksa nama, WhatsApp, jabatan, masa bakti dan persetujuan');
   let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
   let key=rand();await photo(e,key,'PUT',img.bytes,img.type);
-  try{let rows=await e.DB.batch([q(e,'INSERT INTO officer_direct(unit_id,full_name,whatsapp,position,term_start,term_end,photo_key,card_token,consent_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,wa,position,start,end,key,rand(),new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_independent_officer','d'||last_insert_rowid())",a.id,a.unit_id)]);return j({ok:true,id:'d'+rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan pengurus')}
+  try{let rows=await e.DB.batch([q(e,'INSERT INTO officer_direct(unit_id,full_name,whatsapp,position,term_start,term_end,photo_key,card_token,consent_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,wa,position,start,end,key,rand(),new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_independent_officer','d'||last_insert_rowid())",a.id,a.unit_id),...(f.get('publish_public')==='yes'?autoPublication(e,a,'direct','photo_key',key,new Date().toISOString()):[])]);return j({ok:true,id:'d'+rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan pengurus')}
  }
  let directRoute=p.match(/^\/api\/officers\/d(\d+)(?:\/(photo|end|reissue))?$/);
  if(directRoute){
@@ -209,7 +223,7 @@ async function handleApi(r,e){
   if(!Number.isSafeInteger(id)||id<1||!position||!dateOk(start)||!dateOk(end)||start>end)return err(400,'Jabatan dan masa bakti tidak valid');
   let member=await q(e,'SELECT id,status,birth_date FROM members WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!member||member.status!=='active')return err(409,'Anggota harus aktif terlebih dahulu');
   if(await q(e,'SELECT id FROM officers WHERE member_id=? AND revoked_at IS NULL',id).first())return err(409,'Akhiri masa bakti sebelumnya sebelum membuat kartu baru');
-  let token=rand();let rows=await e.DB.batch([q(e,'INSERT INTO officers(member_id,unit_id,position,term_start,term_end,card_token) VALUES(?,?,?,?,?,?) RETURNING id',id,a.unit_id,position,start,end,token),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'appoint_officer',?)",a.id,a.unit_id,String(id))]);return j({ok:true,id:rows[0].results[0].id},201);
+  let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'}),cutoff=(Number(today.slice(0,4))-18)+today.slice(4);if(x.publish_public==='yes'&&(!member.birth_date||member.birth_date>cutoff))return err(400,'Identitas anggota anak tetap privat');let token=rand();let rows=await e.DB.batch([q(e,'INSERT INTO officers(member_id,unit_id,position,term_start,term_end,card_token) VALUES(?,?,?,?,?,?) RETURNING id',id,a.unit_id,position,start,end,token),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'appoint_officer',?)",a.id,a.unit_id,String(id)),...(x.publish_public==='yes'?autoPublication(e,a,'linked','card_token',token,new Date().toISOString()):[])]);return j({ok:true,id:rows[0].results[0].id},201);
  }
  let officerRoute=p.match(/^\/api\/officers\/(\d+)(?:\/(end|reissue))?$/);
  if(officerRoute){
