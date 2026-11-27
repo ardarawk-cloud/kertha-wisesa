@@ -47,7 +47,7 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.9',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.10',database:'connected',photos:'connected',registration:false,admin_only:true})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
 
  if(p==='/api/public/organization'&&m==='GET'){
@@ -174,6 +174,31 @@ async function handleApi(r,e){
 
 
 
+
+
+ if(p==='/api/directory/profile-publication'&&m==='POST'){
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  const x=await r.json(),kind=x.kind,ref=String(x.record_ref||'');
+  if(!['athletes','officers','srikandi'].includes(kind)||!(kind==='officers'?/^d?\d+$/:/^\d+$/).test(ref)||typeof x.publish!=='boolean')return err(400,'Data tidak valid');
+  const direct=kind==='officers'&&ref.startsWith('d'),id=Number(direct?ref.slice(1):ref);
+  if(!Number.isSafeInteger(id)||id<1)return err(400,'Data tidak valid');
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'}),cutoff=(Number(today.slice(0,4))-18)+today.slice(4);
+  let member;
+  if(kind==='officers')member=direct?await q(e,"SELECT photo_key,revoked_at,term_start,term_end FROM officer_direct WHERE id=? AND unit_id=?",id,a.unit_id).first():await q(e,"SELECT m.photo_key,m.birth_date,m.status,o.revoked_at,o.term_start,o.term_end FROM officers o JOIN members m ON m.id=o.member_id AND m.unit_id=o.unit_id WHERE o.id=? AND o.unit_id=?",id,a.unit_id).first();
+  else member=await q(e,kind==='athletes'?'SELECT photo_key,status,birth_date FROM members WHERE id=? AND unit_id=?':'SELECT photo_key,status FROM srikandi WHERE id=? AND unit_id=?',id,a.unit_id).first();
+  if(!member)return err(404,'Profil tidak ditemukan');
+  if(x.publish){
+   if(x.consent!==true||x.adult!==true)return err(400,'Persetujuan publikasi profil dewasa diperlukan');
+   if((kind==='athletes'||(kind==='officers'&&!direct))&&(!member.birth_date||member.birth_date>cutoff))return err(403,'Identitas anak tetap privat');
+   if(kind==='officers'&&(member.revoked_at||member.term_start>today||member.term_end<today))return err(409,'Pengurus belum atau tidak lagi aktif');
+   if((kind!=='officers'||!direct)&&member.status!=='active')return err(409,'Profil belum aktif');
+   if(!member.photo_key)return err(409,'Foto profil belum tersedia');
+  }
+  const ts=new Date().toISOString();
+  const name=x.publish?(kind==='officers'?q(e,'INSERT INTO public_officer_approvals(unit_id,officer_ref,approved_at,approved_by) VALUES(?,?,?,?) ON CONFLICT(unit_id,officer_ref) DO UPDATE SET approved_at=excluded.approved_at,approved_by=excluded.approved_by',a.unit_id,ref,ts,a.id):q(e,'INSERT INTO public_member_approvals(unit_id,kind,member_id,approved_at,approved_by) VALUES(?,?,?,?,?) ON CONFLICT(unit_id,kind,member_id) DO UPDATE SET approved_at=excluded.approved_at,approved_by=excluded.approved_by',a.unit_id,kind,id,ts,a.id)):(kind==='officers'?q(e,'DELETE FROM public_officer_approvals WHERE unit_id=? AND officer_ref=?',a.unit_id,ref):q(e,'DELETE FROM public_member_approvals WHERE unit_id=? AND kind=? AND member_id=?',a.unit_id,kind,id));
+  const portrait=x.publish?q(e,'INSERT INTO public_photo_approvals(unit_id,kind,record_ref,token,approved_at,approved_by) VALUES(?,?,?,?,?,?) ON CONFLICT(unit_id,kind,record_ref) DO UPDATE SET approved_at=excluded.approved_at,approved_by=excluded.approved_by',a.unit_id,kind,ref,rand(),ts,a.id):q(e,'DELETE FROM public_photo_approvals WHERE unit_id=? AND kind=? AND record_ref=?',a.unit_id,kind,ref);
+  await e.DB.batch([name,portrait,q(e,'INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,?,?)',a.id,a.unit_id,(x.publish?'publish_profile_':'hide_profile_')+kind,ref)]);return j({ok:true,published:x.publish});
+ }
 
  if(p==='/api/directory/photo-publication'&&m==='POST'){
   if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
