@@ -10,7 +10,46 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=24" />
-<style id="kw-mobile-menu-fix">@media(max-width:820px){html.kw-menu-open,body.kw-menu-open{overflow:hidden!important}body.kw-menu-open #nadmo-discord-cs{display:none!important}body.kw-menu-open .site-header{z-index:10002!important;backdrop-filter:none!important}#nav.open{position:fixed!important;inset:78px 0 0 0!important;width:100%!important;height:auto!important;max-height:none!important;min-height:0!important;overflow-y:auto!important;display:block!important;background:#14120f!important;padding:8px 24px 40px!important;box-sizing:border-box!important;touch-action:pan-y;overscroll-behavior:contain;z-index:10001!important}#nav.open a{display:block!important;padding:10px 0!important;line-height:1.5!important;flex:none!important}}</style><script>document.addEventListener('DOMContentLoaded',function(){const n=document.getElementById('nav');if(!n)return;const mq=matchMedia('(max-width:820px)');const sync=()=>{const open=mq.matches&&n.classList.contains('open');document.body.classList.toggle('kw-menu-open',open);document.documentElement.classList.toggle('kw-menu-open',open);if(open)n.scrollTop=0};new MutationObserver(sync).observe(n,{attributes:true,attributeFilter:['class']});mq.addEventListener('change',sync);sync()});</script><link rel="stylesheet" href="membership-sync.css?v=1"><script src="membership-sync.js?v=1" defer></script></head>
+<style id="kw-responsive-navigation">
+#top .nav-wrap{gap:20px;height:78px;max-width:1180px}
+#top .brand{flex:0 0 auto;min-width:0}
+#top .brand span{min-width:0}
+#top .brand strong{white-space:nowrap;font-size:clamp(18px,2vw,22px)}
+#top .brand small{display:block;white-space:nowrap;line-height:1.4;margin-top:5px}
+#top .menu-btn{flex:none;cursor:pointer;border-radius:7px}
+#top .kw-grouped-nav{display:flex;align-items:center;gap:clamp(8px,1.5vw,24px);min-width:0}
+#top .kw-nav-group{position:relative;min-width:0}
+#top .kw-nav-group summary{display:flex;align-items:center;gap:5px;list-style:none;cursor:pointer;font-size:13px;color:#e6ddd0;padding:12px 7px;white-space:nowrap;line-height:1.5}
+#top .kw-nav-group summary::-webkit-details-marker{display:none}
+#top .kw-nav-group[open] summary{color:var(--gold-2)}
+#top .kw-nav-group[open] summary svg{transform:rotate(180deg)}
+#top .kw-nav-panel{position:absolute;top:calc(100% + 5px);right:0;min-width:220px;width:max-content;max-width:calc(100vw - 36px);padding:7px;background:#1b1813;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.4);max-height:calc(100dvh - 100px);overflow-y:auto}
+#top .kw-nav-panel a{display:block;padding:10px 12px;line-height:1.5;font-size:13px;border-radius:5px;white-space:normal;overflow-wrap:anywhere}
+#top .kw-nav-panel a:hover,#top .kw-nav-panel a:focus-visible{background:#30281a;color:var(--gold-2)}
+#top .kw-grouped-nav a:after{display:none}
+#top .kw-nav-donate{border:1px solid var(--line);padding:10px 13px;border-radius:7px;color:var(--gold-2);white-space:nowrap;font-weight:600}
+#top .kw-nav-donate:hover{background:#30281a}
+#top .kw-grouped-nav summary:focus-visible,#top .kw-grouped-nav a:focus-visible,#top .menu-btn:focus-visible{outline:2px solid var(--gold-2);outline-offset:3px}
+@media(min-width:821px) and (max-width:980px){#top .kw-nav-extra{display:none}}
+@media(max-width:820px){
+#top .nav-wrap{padding:0 18px;gap:10px}
+#top .brand{flex:1 1 auto;gap:9px}
+#top .brand strong{font-size:clamp(16px,4.1vw,21px)}
+#top .brand small{font-size:9px;letter-spacing:.14em}
+#top .brand-logo{width:36px;height:36px}
+#top .menu-btn{display:block}
+#top .kw-grouped-nav{display:none}
+html.kw-menu-open,body.kw-menu-open{overflow:hidden!important}
+body.kw-menu-open #nadmo-discord-cs{display:none!important}
+body.kw-menu-open #top.site-header{z-index:10002!important;backdrop-filter:none!important}
+#top .kw-grouped-nav.open{position:fixed;inset:78px 0 0;width:100%;max-width:none;height:auto;max-height:none;min-height:0;overflow-y:auto;display:block;background:#14120f;padding:16px 18px calc(36px + env(safe-area-inset-bottom,0px));box-sizing:border-box;touch-action:pan-y;overscroll-behavior:contain;z-index:10001}
+#top .kw-nav-group{border-bottom:1px solid var(--line)}
+#top .kw-nav-group summary{justify-content:space-between;font-size:16px;padding:15px 8px}
+#top .kw-nav-panel{position:static;width:100%;max-width:none;min-width:0;max-height:none;overflow:visible;box-shadow:none;border:0;background:transparent;padding:0 0 10px 8px}
+#top .kw-nav-panel a{padding:11px 10px;font-size:14px}
+#top .kw-nav-donate{display:block;margin:18px 0;padding:13px;text-align:center}
+}
+</style><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.getElementById('nav'),btn=document.getElementById('menuBtn');if(!nav||!btn)return;const mq=matchMedia('(max-width:820px)'),groups=[...nav.querySelectorAll('details')];const collapse=()=>groups.forEach(g=>g.open=false);const close=()=>{nav.classList.remove('open');btn.setAttribute('aria-expanded','false');collapse()};const sync=()=>{const open=mq.matches&&nav.classList.contains('open');document.body.classList.toggle('kw-menu-open',open);document.documentElement.classList.toggle('kw-menu-open',open);btn.textContent=open?'Tutup':'Menu';btn.setAttribute('aria-label',open?'Tutup menu':'Buka menu');if(open)nav.scrollTop=0;else if(mq.matches)collapse()};new MutationObserver(sync).observe(nav,{attributes:true,attributeFilter:['class']});groups.forEach(g=>g.addEventListener('toggle',()=>{if(g.open&&!mq.matches)groups.filter(x=>x!==g).forEach(x=>x.open=false)}));nav.addEventListener('click',e=>{if(e.target.closest('a'))close()});document.addEventListener('click',e=>{if(!nav.contains(e.target)&&!btn.contains(e.target))close()});document.addEventListener('keydown',e=>{if(e.key==='Escape'){const openGroup=groups.find(g=>g.open);if(openGroup){openGroup.open=false;openGroup.querySelector('summary').focus()}else if(nav.classList.contains('open')){close();btn.focus()}}});mq.addEventListener('change',()=>{close();sync()});sync()});</script><link rel="stylesheet" href="membership-sync.css?v=1"><script src="membership-sync.js?v=1" defer></script></head>
 <body>
   <div class="progress" id="progress"></div>
 
@@ -24,25 +63,9 @@
         </span>
       </a>
 
-      <button class="menu-btn" id="menuBtn" aria-label="Buka menu" aria-expanded="false">Menu</button>
+      <button class="menu-btn" id="menuBtn" type="button" aria-controls="nav" aria-label="Buka menu" aria-expanded="false">Menu</button>
 
-      <nav class="nav" id="nav">
-        <a href="#sejarah">Sejarah</a>
-        <a href="#pendiri">Pendiri</a>
-        <a href="#silsilah">Silsilah</a>
-        <a href="#arsip-perbandingan">Perbandingan Arsip</a>
-        <a href="#logo-pertama">Logo Pertama</a>
-        <a href="#nilai">Jati Diri</a>
-        <a href="#organisasi">Organisasi</a>
-        <a href="jaringan.html">Jaringan</a>
-        <a href="pengurus-celagi-gendong-2026.html">Pengurus Celagigendong 2026</a>
-        <a href="#atlet">Atlet</a>
-        <a href="#keanggotaan">Keanggotaan Digital</a>
-        <a href="galeri.html">Galeri Kegiatan</a>
-        <a href="/transparansi.html">Donasi – Sahabat KW</a>
-        <a href="#jejak">Jejak</a>
-        <a href="#sumber">Arsip</a>
-      </nav>
+      <nav class="nav kw-grouped-nav" id="nav" aria-label="Navigasi utama"><details class="kw-nav-group"><summary>Sejarah<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="kw-nav-panel"><a href="#sejarah">Sejarah</a><a href="#pendiri">Pendiri</a><a href="#silsilah">Silsilah</a><a href="#arsip-perbandingan">Perbandingan Arsip</a><a href="#logo-pertama">Logo Pertama</a><a href="#jejak">Jejak</a><a href="#sumber">Arsip</a></div></details><details class="kw-nav-group"><summary>Perguruan<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="kw-nav-panel"><a href="#nilai">Jati Diri</a><a href="#organisasi">Organisasi</a><a href="jaringan.html">Jaringan</a><a href="pengurus-celagi-gendong-2026.html">Pengurus Celagigendong 2026</a><a href="#keanggotaan">Keanggotaan Digital</a></div></details><details class="kw-nav-group"><summary>Kegiatan<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="kw-nav-panel"><a href="#atlet">Atlet</a><a href="galeri.html">Galeri Kegiatan</a></div></details><a class="kw-nav-donate" href="/transparansi.html">Donasi <span class="kw-nav-extra">– Sahabat KW</span></a></nav>
     </div>
   </header>
 
