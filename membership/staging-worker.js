@@ -22,7 +22,7 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.0',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.1',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:!!a&&e.REGISTRATION_OPEN==='true'&&!!e.PHOTOS})}
  if(p==='/api/setup'&&m==='POST'){
   if(!e.SETUP_TOKEN)return err(503,'Aktivasi pengurus belum dikonfigurasi');
@@ -66,7 +66,7 @@ async function handleApi(r,e){
   let t=p.split('/').pop();if(!/^[a-f0-9]{64}$/.test(t))return j({status:'tidak ditemukan'},404);
   if(!await throttle(e,'verify:'+await hash(ip),30))return err(429,'Coba lagi nanti');
   let a=await q(e,'SELECT m.status,c.revoked_at FROM cards c JOIN members m ON m.id=c.member_id WHERE c.token_hash=?',await hash(t)).first();
-  if(!a){let o=await q(e,"SELECT o.revoked_at,o.term_start,o.term_end,m.status FROM officers o JOIN members m ON m.id=o.member_id WHERE o.card_token=?",t).first();if(!o){let k=await q(e,'SELECT status FROM srikandi WHERE card_token=?',t).first();return k?j({status:k.status==='active'?'valid':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu Srikandi internal'}):j({status:'tidak ditemukan'},404)}let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({status:o.revoked_at||today<o.term_start||today>o.term_end?'nonaktif':o.status==='active'?'valid':o.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu pengurus internal'})}return j({status:a.revoked_at?'nonaktif':a.status==='active'?'valid':a.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'KTA internal'});
+  if(!a){let o=await q(e,"SELECT o.revoked_at,o.term_start,o.term_end,m.status FROM officers o JOIN members m ON m.id=o.member_id WHERE o.card_token=?",t).first();if(!o){let direct=await q(e,'SELECT revoked_at,term_start,term_end FROM officer_direct WHERE card_token=?',t).first();if(direct){let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({status:!direct.revoked_at&&today>=direct.term_start&&today<=direct.term_end?'valid':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu pengurus internal'})}let k=await q(e,'SELECT status FROM srikandi WHERE card_token=?',t).first();return k?j({status:k.status==='active'?'valid':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu Srikandi internal'}):j({status:'tidak ditemukan'},404)}let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({status:o.revoked_at||today<o.term_start||today>o.term_end?'nonaktif':o.status==='active'?'valid':o.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu pengurus internal'})}return j({status:a.revoked_at?'nonaktif':a.status==='active'?'valid':a.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'KTA internal'});
  }
  if(p==='/api/srikandi-logo'&&m==='GET'){let obj=await e.PHOTOS.get('brand/srikandi-logo');if(!obj)return err(404,'Logo Srikandi belum diunggah');return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
  let a=await session(e,r);if(!a)return err(401,'Silakan masuk');
@@ -112,9 +112,30 @@ async function handleApi(r,e){
   await e.DB.batch([q(e,'INSERT INTO athlete_contacts(member_id,phone,relationship,consent_at) VALUES(?,?,?,?) ON CONFLICT(member_id) DO UPDATE SET phone=excluded.phone,relationship=excluded.relationship,consent_at=excluded.consent_at',id,phone,rel,new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'update_emergency_contact',?)",a.id,a.unit_id,String(id))]);return j({ok:true})
  }
 
+
+ if(p==='/api/officers/direct'&&m==='POST'){
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  let f=await r.formData(),name=clean(f.get('name'),120),wa=clean(f.get('whatsapp'),25),position=clean(f.get('position'),80),start=clean(f.get('term_start'),10),end=clean(f.get('term_end'),10);
+  let dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
+  if(!name||! /^\+?[0-9]{8,16}$/.test(wa)||!position||!dateOk(start)||!dateOk(end)||start>end||f.get('consent')!=='yes')return err(400,'Periksa nama, WhatsApp, jabatan, masa bakti dan persetujuan');
+  let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
+  let key=rand();await photo(e,key,'PUT',img.bytes,img.type);
+  try{let rows=await e.DB.batch([q(e,'INSERT INTO officer_direct(unit_id,full_name,whatsapp,position,term_start,term_end,photo_key,card_token,consent_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,wa,position,start,end,key,rand(),new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_independent_officer','d'||last_insert_rowid())",a.id,a.unit_id)]);return j({ok:true,id:'d'+rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan pengurus')}
+ }
+ let directRoute=p.match(/^\/api\/officers\/d(\d+)(?:\/(photo|end|reissue))?$/);
+ if(directRoute){
+  if(!admin(a))return err(403,'Akses ditolak');let id=Number(directRoute[1]),op=directRoute[2];
+  let o=await q(e,"SELECT *, 'KW-PGR-'||substr(term_start,1,4)||'-D'||printf('%04d',id) AS member_no FROM officer_direct WHERE id=? AND unit_id=?",id,a.unit_id).first();if(!o)return err(404,'Pengurus tidak ditemukan');
+  if(op==='photo'&&m==='GET'){let r=await photo(e,o.photo_key,'GET');return r.ok?new Response(r.body,{headers:{'Content-Type':r.headers.get('Content-Type'),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}}):err(404,'Foto tidak ditemukan')}
+  if(!op&&m==='GET'){let token=o.card_token;delete o.card_token;delete o.photo_key;o.id='d'+id;o.status='active';o.photo_url='/api/officers/d'+id+'/photo';let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({officer:o,verification:!o.revoked_at&&today>=o.term_start&&today<=o.term_end?'https://memberkw.nadmo.id/verify/'+token:null})}
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  if(op==='end'&&m==='POST'){if(o.revoked_at)return err(409,'Masa bakti sudah berakhir');await e.DB.batch([q(e,'UPDATE officer_direct SET revoked_at=CURRENT_TIMESTAMP WHERE id=? AND unit_id=? AND revoked_at IS NULL',id,a.unit_id),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'end_independent_officer',?)",a.id,a.unit_id,'d'+id)]);return j({ok:true})}
+  if(op==='reissue'&&m==='POST'){if(o.revoked_at)return err(409,'Kartu tidak aktif');await e.DB.batch([q(e,'UPDATE officer_direct SET card_token=? WHERE id=? AND unit_id=? AND revoked_at IS NULL',rand(),id,a.unit_id),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'reissue_independent_officer',?)",a.id,a.unit_id,'d'+id)]);return j({ok:true})}
+ }
+
  if(p==='/api/officers'&&m==='GET'){
   if(!admin(a))return err(403,'Akses ditolak');
-  let rows=await q(e,'SELECT o.id,o.member_id,o.position,o.term_start,o.term_end,o.revoked_at,m.full_name,m.member_no,m.status FROM officers o JOIN members m ON m.id=o.member_id AND m.unit_id=o.unit_id WHERE o.unit_id=? ORDER BY o.id DESC LIMIT 500',a.unit_id).all();return j({officers:rows.results});
+  let rows=await q(e,'SELECT o.id,o.member_id,o.position,o.term_start,o.term_end,o.revoked_at,m.full_name,m.member_no,m.status FROM officers o JOIN members m ON m.id=o.member_id AND m.unit_id=o.unit_id WHERE o.unit_id=? ORDER BY o.id DESC LIMIT 500',a.unit_id).all();let direct=await q(e,"SELECT 'd'||id AS id,full_name,position,term_start,term_end,revoked_at,'KW-PGR-'||substr(term_start,1,4)||'-D'||printf('%04d',id) AS member_no,'active' AS status FROM officer_direct WHERE unit_id=? ORDER BY id DESC LIMIT 500",a.unit_id).all();return j({officers:[...direct.results,...rows.results]});
  }
  if(p==='/api/officers'&&m==='POST'){
   if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
