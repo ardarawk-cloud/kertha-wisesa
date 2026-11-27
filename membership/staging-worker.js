@@ -12,7 +12,7 @@ const clean=(v,n=120)=>typeof v==='string'?v.trim().slice(0,n):'';
 const login=v=>clean(v,120).toLowerCase();
 const goodpass=p=>typeof p==='string'&&p.length>=12&&p.length<=128;
 async function throttle(e,key,max){let t=Math.floor(Date.now()/60000);let r=await q(e,'INSERT INTO rate_limits(key,window_start,attempts) VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN window_start=excluded.window_start THEN attempts+1 ELSE 1 END,window_start=excluded.window_start RETURNING attempts',key,t).first();return r.attempts<=max}
-async function session(e,r){let t=(r.headers.get('Cookie')||'').match(/(?:^|;\s*)kw_session=([a-f0-9]{64})(?:;|$)/)?.[1];if(!t)return null;return q(e,'SELECT a.id,a.role,a.unit_id,a.member_id FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>? AND a.enabled=1',await hash(t),Date.now()).first()}
+async function session(e,r){let t=(r.headers.get('Cookie')||'').match(/(?:^|;\s*)kw_session=([a-f0-9]{64})(?:;|$)/)?.[1];if(!t)return null;return q(e,'SELECT a.id,a.role,a.unit_id,a.member_id FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>? AND a.enabled=1 AND a.role IN (\'super_admin\',\'admin\')',await hash(t),Date.now()).first()}
 const admin=a=>a&&['super_admin','admin','sekretaris'].includes(a.role);
 async function cardToken(e,id){return id}
 async function photo(e,key,method,body,type){if(!e.PHOTOS||!key||! /^[a-f0-9]{64}$/.test(key))return new Response(null,{status:503});if(method==='PUT'){await e.PHOTOS.put(key,body,{httpMetadata:{contentType:type}});return new Response(null,{status:201})}if(method==='DELETE'){await e.PHOTOS.delete(key);return new Response(null,{status:204})}let obj=await e.PHOTOS.get(key);return obj?new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream'}}):new Response(null,{status:404})}
@@ -22,8 +22,8 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.1',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
- if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:!!a&&e.REGISTRATION_OPEN==='true'&&!!e.PHOTOS})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.5',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
  if(p==='/api/setup'&&m==='POST'){
   if(!e.SETUP_TOKEN)return err(503,'Aktivasi pengurus belum dikonfigurasi');
   if(!await throttle(e,'setup:'+await hash(ip),3))return err(429,'Coba lagi nanti');
@@ -35,7 +35,7 @@ async function handleApi(r,e){
   return j({ok:true},201);
  }
  if((p==='/api/register'||p==='/api/members')&&m==='POST'){
-  const staff=p==='/api/members',actor=staff?await session(e,r):null;
+  const staff=p==='/api/members';if(!staff)return err(403,'Pendaftaran hanya melalui administrator');const actor=await session(e,r);
   if(staff&&!admin(actor))return err(actor?403:401,'Akses pengurus diperlukan');
   if(!staff&&(e.REGISTRATION_OPEN!=='true'||!e.PHOTOS||!await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first()))return err(503,'Pendaftaran belum dibuka');
   if(!await throttle(e,staff?'staff-register:'+actor.id:'register:'+await hash(ip),staff?30:3))return err(429,'Coba lagi nanti');
@@ -59,7 +59,7 @@ async function handleApi(r,e){
   if(!await throttle(e,'login-ip:'+await hash(ip),8)||!await throttle(e,'login-account:'+await hash(l),5))return err(429,'Coba lagi nanti');
   if(!goodpass(x.password))return err(401,'Login atau sandi salah');
   let a=await q(e,'SELECT * FROM accounts WHERE login=? AND enabled=1',l).first();
-  let h=await password(x.password,a?.password_salt||'invalid-account-padding');if(!a||!equal(h,a.password_hash))return err(401,'Login atau sandi salah');
+  let h=await password(x.password,a?.password_salt||'invalid-account-padding');if(!a||!equal(h,a.password_hash)||!['super_admin','admin'].includes(a.role))return err(401,'Login atau sandi salah');
   let t=rand();await q(e,'INSERT INTO sessions VALUES(?,?,?)',await hash(t),a.id,Date.now()+86400000).run();return j({ok:true,role:a.role},200,{'Set-Cookie':'kw_session='+t+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400'});
  }
  if(p.startsWith('/api/verify/')&&m==='GET'){
