@@ -21,8 +21,8 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});return j({ok:true,version:'0.1.2',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
- if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({registration_open:!!a&&e.REGISTRATION_OPEN==='true'&&!!e.PHOTOS})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});return j({ok:true,version:'0.1.3',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
+ if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:!!a&&e.REGISTRATION_OPEN==='true'&&!!e.PHOTOS})}
  if(p==='/api/setup'&&m==='POST'){
   if(!e.SETUP_TOKEN)return err(503,'Aktivasi pengurus belum dikonfigurasi');
   if(!await throttle(e,'setup:'+await hash(ip),3))return err(429,'Coba lagi nanti');
@@ -33,20 +33,23 @@ async function handleApi(r,e){
   if(!a.meta.changes)return err(409,'Pengurus sudah diaktifkan');
   return j({ok:true},201);
  }
- if(p==='/api/register'&&m==='POST'){
-  if(e.REGISTRATION_OPEN!=='true'||!e.PHOTOS||!await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first())return err(503,'Pendaftaran belum dibuka');
-  if(!await throttle(e,'register:'+await hash(ip),3))return err(429,'Coba lagi nanti');
+ if((p==='/api/register'||p==='/api/members')&&m==='POST'){
+  const staff=p==='/api/members',actor=staff?await session(e,r):null;
+  if(staff&&!admin(actor))return err(actor?403:401,'Akses pengurus diperlukan');
+  if(!staff&&(e.REGISTRATION_OPEN!=='true'||!e.PHOTOS||!await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first()))return err(503,'Pendaftaran belum dibuka');
+  if(!await throttle(e,staff?'staff-register:'+actor.id:'register:'+await hash(ip),staff?30:3))return err(429,'Coba lagi nanti');
   if(Number(r.headers.get('Content-Length')||0)>2500000)return err(413,'Foto maksimal 2 MB');
   let f=await r.formData(),g=(k,n)=>clean(f.get(k),n);
   let name=g('name',120),place=g('birth_place',100),date=g('birth_date',10),gender=g('gender',20),address=g('address',400),wa=g('whatsapp',25),year=Number(g('joined_year',4)),belt=g('belt',60),guardian=g('guardian_name',120),emergency=g('emergency_contact',100),l=login(f.get('login')),pw=f.get('password');
   let dob=new Date(date+'T00:00:00Z'),now=new Date(),adult=new Date(Date.UTC(now.getUTCFullYear()-18,now.getUTCMonth(),now.getUTCDate())),minor=dob>adult;
-  if(!name||!place||! /^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+dob)||dob.toISOString().slice(0,10)!==date||dob>now||dob.getUTCFullYear()<1900||!['Laki-laki','Perempuan'].includes(gender)||!address||!/^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>now.getUTCFullYear()||!belt||!emergency||!l||!goodpass(pw)||f.get('consent')!=='yes'||(minor&&(!guardian||f.get('guardian_consent')!=='yes')))return err(400,'Periksa seluruh data dan persetujuan wali untuk anak');
-  if(await q(e,'SELECT id FROM accounts WHERE login=?',l).first())return err(409,'Login tidak tersedia');
+  if(!name||!place||! /^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+dob)||dob.toISOString().slice(0,10)!==date||dob>now||dob.getUTCFullYear()<1900||!['Laki-laki','Perempuan'].includes(gender)||!address||!/^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>now.getUTCFullYear()||!belt||!emergency||(!staff&&(!l||!goodpass(pw)))||f.get('consent')!=='yes'||(minor&&(!guardian||f.get('guardian_consent')!=='yes')))return err(400,'Periksa seluruh data dan persetujuan wali untuk anak');
+  if(!staff&&await q(e,'SELECT id FROM accounts WHERE login=?',l).first())return err(409,'Login tidak tersedia');
   let file=f.get('photo');if(!file||typeof file.arrayBuffer!=='function'||file.size<12||file.size>2000000)return err(400,'Foto wajib, maksimal 2 MB');
   let bytes=new Uint8Array(await file.arrayBuffer()),type=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP'?'image/webp':null;
   if(!type)return err(400,'Gunakan foto JPG, PNG atau WebP');
-  let key=rand(),s=rand(),h=await password(pw,s),aid=crypto.randomUUID(),ts=now.toISOString();
+  let key=rand(),s=rand(),h=staff?null:await password(pw,s),aid=crypto.randomUUID(),ts=now.toISOString();
   let put=await photo(e,key,'PUT',bytes,type);if(!put.ok)return err(503,'Penyimpanan foto belum tersedia');
+  if(staff){try{let rows=await e.DB.batch([q(e,'INSERT INTO members(unit_id,full_name,birth_place,birth_date,gender,address,whatsapp,joined_year,belt,guardian_name,emergency_contact,consent_at,guardian_consent_at,photo_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id',actor.unit_id,name,place,date,gender,address,wa,year,belt,guardian||null,emergency,ts,minor?ts:null,key),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?, 'create_member',last_insert_rowid())",actor.id,actor.unit_id)]);return j({ok:true,id:rows[0].results[0].id,status:'pending'},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Penyimpanan anggota gagal')}}
   try{await e.DB.batch([q(e,'INSERT INTO members(unit_id,full_name,birth_place,birth_date,gender,address,whatsapp,joined_year,belt,guardian_name,emergency_contact,consent_at,guardian_consent_at,photo_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)','CLG',name,place,date,gender,address,wa,year,belt,guardian||null,emergency,ts,minor?ts:null,key),q(e,"INSERT INTO accounts(id,member_id,unit_id,login,password_hash,password_salt,role) VALUES(?,last_insert_rowid(),'CLG',?,?,?,'member')",aid,l,h,s)]);}catch(ex){await photo(e,key,'DELETE');return err(409,'Pendaftaran gagal, coba login lain')}
   return j({ok:true,status:'pending'},201);
  }
@@ -81,7 +84,7 @@ async function handleApi(r,e){
   if(!admin(a)&&!(own&&action==='photo'&&m==='GET'))return err(403,'Akses ditolak');
   let member=await q(e,'SELECT * FROM members WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!member)return err(404,'Anggota tidak ditemukan');
   if(action==='photo'&&m==='GET'){let res=await photo(e,member.photo_key,'GET');if(!res.ok)return err(404,'Foto tidak tersedia');return new Response(res.body,{headers:{'Content-Type':res.headers.get('Content-Type'),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}})}
-  if(!action&&m==='GET'){delete member.photo_key;return j({member})}
+  if(!action&&m==='GET'){delete member.photo_key;let c=member.status==='active'?await q(e,'SELECT id FROM cards WHERE member_id=? AND revoked_at IS NULL',id).first():null;return j({member,verification:c?'https://memberkw.nadmo.id/verify/'+await cardToken(e,c.id):null})}
   if(action==='approve'&&m==='POST'){
    if(!['admin','super_admin'].includes(a.role))return err(403,'Persetujuan hanya oleh admin');
    if(!member.photo_key)return err(409,'Foto belum tersedia');
