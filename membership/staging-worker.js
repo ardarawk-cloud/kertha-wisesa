@@ -16,12 +16,13 @@ async function session(e,r){let t=(r.headers.get('Cookie')||'').match(/(?:^|;\s*
 const admin=a=>a&&['super_admin','admin','sekretaris'].includes(a.role);
 async function cardToken(e,id){return id}
 async function photo(e,key,method,body,type){if(!e.PHOTOS||!key||! /^[a-f0-9]{64}$/.test(key))return new Response(null,{status:503});if(method==='PUT'){await e.PHOTOS.put(key,body,{httpMetadata:{contentType:type}});return new Response(null,{status:201})}if(method==='DELETE'){await e.PHOTOS.delete(key);return new Response(null,{status:204})}let obj=await e.PHOTOS.get(key);return obj?new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream'}}):new Response(null,{status:404})}
+async function validatedImage(file){if(!file||typeof file.arrayBuffer!=='function'||file.size<12||file.size>2000000)return null;let bytes=new Uint8Array(await file.arrayBuffer()),type=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71?'image/png':String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP'?'image/webp':null;return type?{bytes,type}:null}
 async function handleApi(r,e){
  const u=new URL(r.url), p=u.pathname,m=r.method;
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();return j({officers:true,ok:true,version:'0.2.0',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.0',database:'connected',photos:'connected',registration:e.REGISTRATION_OPEN==='true'})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:!!a&&e.REGISTRATION_OPEN==='true'&&!!e.PHOTOS})}
  if(p==='/api/setup'&&m==='POST'){
   if(!e.SETUP_TOKEN)return err(503,'Aktivasi pengurus belum dikonfigurasi');
@@ -65,14 +66,50 @@ async function handleApi(r,e){
   let t=p.split('/').pop();if(!/^[a-f0-9]{64}$/.test(t))return j({status:'tidak ditemukan'},404);
   if(!await throttle(e,'verify:'+await hash(ip),30))return err(429,'Coba lagi nanti');
   let a=await q(e,'SELECT m.status,c.revoked_at FROM cards c JOIN members m ON m.id=c.member_id WHERE c.token_hash=?',await hash(t)).first();
-  if(!a){let o=await q(e,"SELECT o.revoked_at,o.term_start,o.term_end,m.status FROM officers o JOIN members m ON m.id=o.member_id WHERE o.card_token=?",t).first();if(!o)return j({status:'tidak ditemukan'},404);let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({status:o.revoked_at||today<o.term_start||today>o.term_end?'nonaktif':o.status==='active'?'valid':o.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu pengurus internal'})}return j({status:a.revoked_at?'nonaktif':a.status==='active'?'valid':a.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'KTA internal'});
+  if(!a){let o=await q(e,"SELECT o.revoked_at,o.term_start,o.term_end,m.status FROM officers o JOIN members m ON m.id=o.member_id WHERE o.card_token=?",t).first();if(!o){let k=await q(e,'SELECT status FROM srikandi WHERE card_token=?',t).first();return k?j({status:k.status==='active'?'valid':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu Srikandi internal'}):j({status:'tidak ditemukan'},404)}let today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Makassar'});return j({status:o.revoked_at||today<o.term_start||today>o.term_end?'nonaktif':o.status==='active'?'valid':o.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'Kartu pengurus internal'})}return j({status:a.revoked_at?'nonaktif':a.status==='active'?'valid':a.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'KTA internal'});
  }
+ if(p==='/api/srikandi-logo'&&m==='GET'){let obj=await e.PHOTOS.get('brand/srikandi-logo');if(!obj)return err(404,'Logo Srikandi belum diunggah');return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
  let a=await session(e,r);if(!a)return err(401,'Silakan masuk');
  if(p==='/api/logout'&&m==='POST'){let t=(r.headers.get('Cookie')||'').match(/kw_session=([a-f0-9]{64})/)?.[1];if(t)await q(e,'DELETE FROM sessions WHERE token_hash=?',await hash(t)).run();return j({ok:true},200,{'Set-Cookie':'kw_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'})}
  if(p==='/api/me'&&m==='GET'){
   let member=a.member_id?await q(e,'SELECT id,member_no,full_name,joined_year,belt,status,birth_place,birth_date,gender,address,whatsapp,guardian_name,emergency_contact FROM members WHERE id=? AND unit_id=?',a.member_id,a.unit_id).first():null;
   let c=member?.status==='active'?await q(e,'SELECT id FROM cards WHERE member_id=? AND revoked_at IS NULL',a.member_id).first():null;
-  let officer=member?await q(e,'SELECT id,position,term_start,term_end FROM officers WHERE member_id=? AND revoked_at IS NULL',member.id).first():null;return j({role:a.role,member,officer,verification:c?'https://memberkw.nadmo.id/verify/'+await cardToken(e,c.id):null});
+  if(member)member.card_contact=await q(e,'SELECT phone,relationship FROM athlete_contacts WHERE member_id=?',member.id).first();let officer=member?await q(e,'SELECT id,position,term_start,term_end FROM officers WHERE member_id=? AND revoked_at IS NULL',member.id).first():null;return j({role:a.role,member,officer,verification:c?'https://memberkw.nadmo.id/verify/'+await cardToken(e,c.id):null});
+ }
+
+
+ if(p==='/api/srikandi-logo'&&m==='POST'){
+  if(a.role!=='super_admin')return err(403,'Akses ditolak');
+  let f=await r.formData(),file=f.get('photo'),img=await validatedImage(file);if(!img)return err(400,'Gunakan logo asli JPG, PNG atau WebP maksimal 2 MB');
+  await e.PHOTOS.put('brand/srikandi-logo',img.bytes,{httpMetadata:{contentType:img.type}});await q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'srikandi_logo',?)",a.id,a.unit_id,'brand').run();return j({ok:true});
+ }
+ if(p==='/api/srikandi'&&m==='GET'){
+  if(!admin(a))return err(403,'Akses ditolak');
+  let rows=await q(e,'SELECT id,full_name,category,joined_year,status,member_no FROM srikandi WHERE unit_id=? ORDER BY id DESC LIMIT 500',a.unit_id).all();return j({members:rows.results,logo_ready:!!await e.PHOTOS.head('brand/srikandi-logo')});
+ }
+ if(p==='/api/srikandi'&&m==='POST'){
+  if(!admin(a))return err(403,'Akses ditolak');
+  let f=await r.formData(),name=clean(f.get('name'),120),category=clean(f.get('category'),80),wa=clean(f.get('whatsapp'),25),year=Number(f.get('joined_year'));
+  if(!name||!['Istri pengurus','Ibu atlet','Keluarga besar KW','Anggota Srikandi'].includes(category)||! /^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>new Date().getFullYear()||f.get('consent')!=='yes')return err(400,'Periksa data dan persetujuan anggota');
+  let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
+  let key=rand();await photo(e,key,'PUT',img.bytes,img.type);
+  try{let rows=await e.DB.batch([q(e,'INSERT INTO srikandi(unit_id,full_name,category,joined_year,whatsapp,photo_key,consent_at) VALUES(?,?,?,?,?,?,?) RETURNING id',a.unit_id,name,category,year,wa,key,new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'create_srikandi',last_insert_rowid())",a.id,a.unit_id)]);return j({ok:true,id:rows[0].results[0].id},201)}catch(ex){await photo(e,key,'DELETE');return err(409,'Gagal menyimpan data')}
+ }
+ let sr=p.match(/^\/api\/srikandi\/(\d+)(?:\/(photo|approve|status))?$/);
+ if(sr){
+  if(!admin(a))return err(403,'Akses ditolak');let id=Number(sr[1]),op=sr[2],k=await q(e,'SELECT * FROM srikandi WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!k)return err(404,'Srikandi tidak ditemukan');
+  if(op==='photo'&&m==='GET'){let r=await photo(e,k.photo_key,'GET');return r.ok?new Response(r.body,{headers:{'Content-Type':r.headers.get('Content-Type'),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}}):err(404,'Foto tidak ditemukan')}
+  if(!op&&m==='GET'){let token=k.card_token;delete k.photo_key;delete k.card_token;return j({member:k,verification:k.status==='active'&&token?'https://memberkw.nadmo.id/verify/'+token:null})}
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  if(op==='approve'&&m==='POST'){if(k.status!=='pending')return err(409,'Status tidak sesuai');if(!await e.PHOTOS.head('brand/srikandi-logo'))return err(409,'Unggah logo Srikandi asli dahulu');let no='KW-SRK-'+k.joined_year+'-'+String(id).padStart(4,'0');await e.DB.batch([q(e,"UPDATE srikandi SET status='active',member_no=?,card_token=? WHERE id=? AND unit_id=? AND status='pending'",no,rand(),id,a.unit_id),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'approve_srikandi',?)",a.id,a.unit_id,String(id))]);return j({ok:true,member_no:no})}
+  if(op==='status'&&m==='POST'){let x=await r.json();if(!k.member_no||!['active','inactive'].includes(x.status))return err(400,'Status tidak valid');await e.DB.batch([q(e,'UPDATE srikandi SET status=? WHERE id=? AND unit_id=?',x.status,id,a.unit_id),q(e,'INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,?,?)',a.id,a.unit_id,'srikandi:'+x.status,String(id))]);return j({ok:true})}
+ }
+ let ec=p.match(/^\/api\/members\/(\d+)\/emergency$/);
+ if(ec&&m==='POST'){
+  if(!admin(a))return err(403,'Akses ditolak');let id=Number(ec[1]),member=await q(e,'SELECT id FROM members WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!member)return err(404,'Anggota tidak ditemukan');
+  let x=await r.json(),phone=clean(x.phone,25),rel=clean(x.relationship,60);
+  if(!/^\+?[0-9]{8,16}$/.test(phone)||!['Orang tua','Wali','Keluarga','Pengurus KW','Pelatih'].includes(rel)||x.consent!==true)return err(400,'Nomor dan persetujuan kontak diperlukan');
+  await e.DB.batch([q(e,'INSERT INTO athlete_contacts(member_id,phone,relationship,consent_at) VALUES(?,?,?,?) ON CONFLICT(member_id) DO UPDATE SET phone=excluded.phone,relationship=excluded.relationship,consent_at=excluded.consent_at',id,phone,rel,new Date().toISOString()),q(e,"INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,'update_emergency_contact',?)",a.id,a.unit_id,String(id))]);return j({ok:true})
  }
 
  if(p==='/api/officers'&&m==='GET'){
@@ -110,7 +147,7 @@ async function handleApi(r,e){
   if(!admin(a)&&!(own&&action==='photo'&&m==='GET'))return err(403,'Akses ditolak');
   let member=await q(e,'SELECT * FROM members WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!member)return err(404,'Anggota tidak ditemukan');
   if(action==='photo'&&m==='GET'){let res=await photo(e,member.photo_key,'GET');if(!res.ok)return err(404,'Foto tidak tersedia');return new Response(res.body,{headers:{'Content-Type':res.headers.get('Content-Type'),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}})}
-  if(!action&&m==='GET'){delete member.photo_key;let c=member.status==='active'?await q(e,'SELECT id FROM cards WHERE member_id=? AND revoked_at IS NULL',id).first():null;return j({member,verification:c?'https://memberkw.nadmo.id/verify/'+await cardToken(e,c.id):null})}
+  if(!action&&m==='GET'){delete member.photo_key;member.card_contact=await q(e,'SELECT phone,relationship FROM athlete_contacts WHERE member_id=?',id).first();let c=member.status==='active'?await q(e,'SELECT id FROM cards WHERE member_id=? AND revoked_at IS NULL',id).first():null;return j({member,verification:c?'https://memberkw.nadmo.id/verify/'+await cardToken(e,c.id):null})}
   if(action==='approve'&&m==='POST'){
    if(!['admin','super_admin'].includes(a.role))return err(403,'Persetujuan hanya oleh admin');
    if(!member.photo_key)return err(409,'Foto belum tersedia');
