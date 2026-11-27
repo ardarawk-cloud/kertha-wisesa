@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS public_officer_approvals(unit_id TEXT NOT NULL REFERENCES units(id),officer_ref TEXT NOT NULL,approved_at TEXT NOT NULL,approved_by TEXT NOT NULL REFERENCES accounts(id),PRIMARY KEY(unit_id,officer_ref));
