@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS public_photo_approvals(unit_id TEXT NOT NULL REFERENCES units(id),kind TEXT NOT NULL CHECK(kind IN ('athletes','officers','srikandi')),record_ref TEXT NOT NULL,token TEXT NOT NULL UNIQUE,approved_at TEXT NOT NULL,approved_by TEXT NOT NULL REFERENCES accounts(id),PRIMARY KEY(unit_id,kind,record_ref));
