@@ -59,8 +59,8 @@ async function handleApi(r,e){
   let t=rand();await q(e,'INSERT INTO sessions VALUES(?,?,?)',await hash(t),a.id,Date.now()+86400000).run();return j({ok:true,role:a.role},200,{'Set-Cookie':'kw_session='+t+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400'});
  }
  if(p.startsWith('/api/verify/')&&m==='GET'){
-  if(!await throttle(e,'verify:'+await hash(ip),30))return err(429,'Coba lagi nanti');
   let t=p.split('/').pop();if(!/^[a-f0-9]{64}$/.test(t))return j({status:'tidak ditemukan'},404);
+  if(!await throttle(e,'verify:'+await hash(ip),30))return err(429,'Coba lagi nanti');
   let a=await q(e,'SELECT m.status,c.revoked_at FROM cards c JOIN members m ON m.id=c.member_id WHERE c.token_hash=?',await hash(t)).first();
   if(!a)return j({status:'tidak ditemukan'},404);return j({status:a.revoked_at?'nonaktif':a.status==='active'?'valid':a.status==='suspended'?'ditangguhkan':'nonaktif',organization:'PPS Kertha Wisesa Celagigendong Pemecutan',type:'KTA internal'});
  }
