@@ -12,8 +12,7 @@ export default {async fetch(r,e){try{let u=new URL(r.url),p=u.pathname;
   if(p==='/api/status')return res(JSON.stringify({registration_open:false}),'application/json');
   if(p==='/api/health'||/^\/api\/verify\/[a-f0-9]{64}$/.test(p)){
    let dest=p;
-   let b=await fetch('https://kw-membership-core.balinightlife666.workers.dev'+dest,{method:'GET',redirect:'error'});
-   return res(b.body,'application/json',b.status);
+   try {let b=await fetch('https://kw-membership-core.balinightlife666.workers.dev'+dest,{method:'GET',redirect:'follow',headers:{'Accept':'application/json'}});let content=await b.text();if(!b.headers.get('Content-Type')?.includes('application/json'))return res(JSON.stringify({ok:false,upstream_status:b.status,error:'Upstream response is not JSON'}),'application/json',502);return res(content,'application/json',b.status);}catch(ex){return res(JSON.stringify({ok:false,error:'Upstream fetch failed',category:ex instanceof TypeError?'network':'runtime'}),'application/json',502);}
   }
   if(p.startsWith('/api/verify/'))return res(JSON.stringify({status:'tidak ditemukan'}),'application/json',404);
   return res(JSON.stringify({error:'Akses belum diaktifkan'}),'application/json',401);
