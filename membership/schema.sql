@@ -1,0 +1,11 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS units(id TEXT PRIMARY KEY,name TEXT NOT NULL,parent_id TEXT REFERENCES units(id));
+INSERT OR IGNORE INTO units(id,name) VALUES('CLG','PPS Kertha Wisesa Celagigendong Pemecutan');
+CREATE TABLE IF NOT EXISTS members(id INTEGER PRIMARY KEY AUTOINCREMENT,unit_id TEXT NOT NULL REFERENCES units(id),member_no TEXT UNIQUE,full_name TEXT NOT NULL,birth_place TEXT NOT NULL,birth_date TEXT NOT NULL,gender TEXT NOT NULL,address TEXT NOT NULL,whatsapp TEXT NOT NULL,joined_year INTEGER NOT NULL,belt TEXT NOT NULL,guardian_name TEXT,emergency_contact TEXT NOT NULL,consent_at TEXT NOT NULL,guardian_consent_at TEXT,photo_key TEXT,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','inactive','alumni','suspended')),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,member_id INTEGER UNIQUE REFERENCES members(id),unit_id TEXT NOT NULL REFERENCES units(id),login TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,password_salt TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('super_admin','admin','humas','sekretaris','bendahara','pelatih','member')),enabled INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS cards(id TEXT PRIMARY KEY,member_id INTEGER NOT NULL REFERENCES members(id),token_hash TEXT NOT NULL UNIQUE,issued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,revoked_at TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_card ON cards(member_id) WHERE revoked_at IS NULL;
+CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,actor_id TEXT,unit_id TEXT NOT NULL,action TEXT NOT NULL,target_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS rate_limits(key TEXT PRIMARY KEY,window_start INTEGER NOT NULL,attempts INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS members_unit_status ON members(unit_id,status);
