@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS public_member_approvals(unit_id TEXT NOT NULL REFERENCES units(id),kind TEXT NOT NULL CHECK(kind IN ('athletes','srikandi')),member_id INTEGER NOT NULL,approved_at TEXT NOT NULL,approved_by TEXT NOT NULL REFERENCES accounts(id),PRIMARY KEY(unit_id,kind,member_id));
