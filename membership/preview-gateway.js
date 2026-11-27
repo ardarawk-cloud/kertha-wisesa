@@ -11,8 +11,8 @@ export default {async fetch(r,e){try{let u=new URL(r.url),p=u.pathname;
   if(r.method!=='GET')return res(JSON.stringify({error:'Pendaftaran dan login masih ditutup sampai pengujian keamanan selesai.'}),'application/json',503);
   if(p==='/api/status')return res(JSON.stringify({registration_open:false}),'application/json');
   if(p==='/api/health'||/^\/api\/verify\/[a-f0-9]{64}$/.test(p)){
-   let dest=p==='/api/health'?'/health':p;
-   let b=await fetch('https://kw-membership.balinightlife666.workers.dev'+dest,{method:'GET',redirect:'error'});
+   let dest=p;
+   let b=await fetch('https://kw-membership-core.balinightlife666.workers.dev'+dest,{method:'GET',redirect:'error'});
    return res(b.body,'application/json',b.status);
   }
   if(p.startsWith('/api/verify/'))return res(JSON.stringify({status:'tidak ditemukan'}),'application/json',404);
