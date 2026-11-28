@@ -47,7 +47,7 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.14',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.17',database:'connected',photos:'connected',registration:false,admin_only:true})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
 
  if(p==='/api/public/organization'&&m==='GET'){
@@ -110,6 +110,14 @@ async function handleApi(r,e){
  if(p==='/api/srikandi-logo'&&m==='GET'){let obj=await e.PHOTOS.get('brand/srikandi-logo');if(!obj)return err(404,'Logo Srikandi belum diunggah');return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
  let a=await session(e,r);if(!a)return err(401,'Silakan masuk');
 
+ if(p==='/api/directory/address'&&m==='POST'){
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  let x=await r.json(),ref=String(x.record_ref??''),address=typeof x.address==='string'?x.address.trim():'';
+  if(!/^[1-9]\d*$/.test(ref)||!Number.isSafeInteger(Number(ref))||!address||address.length>400||/[\x00-\x1f\x7f]/.test(address))return err(400,'Alamat wajib diisi, maksimal 400 karakter');
+  let id=Number(ref),row=await q(e,'SELECT id,address FROM members WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!row)return err(404,'Anggota tidak ditemukan');
+  if(row.address!==address)await e.DB.batch([q(e,'UPDATE members SET address=? WHERE id=? AND unit_id=?',address,id,a.unit_id),q(e,'INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,?,?)',a.id,a.unit_id,'edit_address',ref)]);
+  return j({ok:true});
+ }
  if(p==='/api/directory/name'&&m==='POST'){
   if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
   let x=await r.json(),kind=x.kind,ref=String(x.record_ref??''),name=typeof x.full_name==='string'?x.full_name.trim().replace(/\s+/g,' ').toUpperCase():'';
