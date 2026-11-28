@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS card_photo_crop(unit_id TEXT NOT NULL REFERENCES units(id),kind TEXT NOT NULL CHECK(kind IN ('athletes','officers','srikandi')),record_ref TEXT NOT NULL,zoom REAL NOT NULL CHECK(zoom>=1 AND zoom<=3),pan_x REAL NOT NULL CHECK(pan_x>=0 AND pan_x<=1),pan_y REAL NOT NULL CHECK(pan_y>=0 AND pan_y<=1),PRIMARY KEY(unit_id,kind,record_ref));
