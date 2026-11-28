@@ -47,7 +47,7 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.10',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.14',database:'connected',photos:'connected',registration:false,admin_only:true})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
 
  if(p==='/api/public/organization'&&m==='GET'){
@@ -79,7 +79,7 @@ async function handleApi(r,e){
   if(!await throttle(e,staff?'staff-register:'+actor.id:'register:'+await hash(ip),staff?30:3))return err(429,'Coba lagi nanti');
   if(Number(r.headers.get('Content-Length')||0)>2500000)return err(413,'Foto maksimal 2 MB');
   let f=await r.formData(),g=(k,n)=>clean(f.get(k),n);
-  let name=g('name',120),place=g('birth_place',100),date=g('birth_date',10),gender=g('gender',20),address=g('address',400),wa=g('whatsapp',25),year=Number(g('joined_year',4)),belt=g('belt',60),guardian=g('guardian_name',120),emergency=g('emergency_contact',100),l=login(f.get('login')),pw=f.get('password');
+  let name=g('name',120).toUpperCase(),place=g('birth_place',100),date=g('birth_date',10),gender=g('gender',20),address=g('address',400),wa=g('whatsapp',25),year=Number(g('joined_year',4)),belt=g('belt',60),guardian=g('guardian_name',120),emergency=g('emergency_contact',100),l=login(f.get('login')),pw=f.get('password');
   let dob=new Date(date+'T00:00:00Z'),now=new Date(),adult=new Date(Date.UTC(now.getUTCFullYear()-18,now.getUTCMonth(),now.getUTCDate())),minor=dob>adult;
   if(!name||!place||! /^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+dob)||dob.toISOString().slice(0,10)!==date||dob>now||dob.getUTCFullYear()<1900||!['Laki-laki','Perempuan'].includes(gender)||!address||!/^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>now.getUTCFullYear()||!belt||!emergency||(!staff&&(!l||!goodpass(pw)))||f.get('consent')!=='yes'||(minor&&(!guardian||f.get('guardian_consent')!=='yes')))return err(400,'Periksa seluruh data dan persetujuan wali untuk anak');
   if(f.get('publish_public')==='yes'&&minor)return err(400,'Identitas atlet anak tetap privat. Hilangkan centang publikasi.');
@@ -109,6 +109,20 @@ async function handleApi(r,e){
  }
  if(p==='/api/srikandi-logo'&&m==='GET'){let obj=await e.PHOTOS.get('brand/srikandi-logo');if(!obj)return err(404,'Logo Srikandi belum diunggah');return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
  let a=await session(e,r);if(!a)return err(401,'Silakan masuk');
+
+ if(p==='/api/directory/name'&&m==='POST'){
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  let x=await r.json(),kind=x.kind,ref=String(x.record_ref??''),name=typeof x.full_name==='string'?x.full_name.trim().replace(/\s+/g,' ').toUpperCase():'';
+  if(!['athletes','officers','srikandi'].includes(kind)||!(kind==='officers'?/^d?[1-9]\d*$/:/^[1-9]\d*$/).test(ref)||!name||name.length>120||/[\x00-\x1f\x7f]/.test(name))return err(400,'Nama atau identitas tidak valid (maksimal 120 karakter)');
+  let table=kind==='srikandi'?'srikandi':kind==='officers'&&ref.startsWith('d')?'officer_direct':'members',id=Number(ref.replace(/^d/,''));
+  if(!Number.isSafeInteger(id))return err(400,'Identitas tidak valid');
+  if(kind==='officers'&&!ref.startsWith('d')){let o=await q(e,'SELECT member_id FROM officers WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!o)return err(404,'Pengurus tidak ditemukan');id=o.member_id}
+  let row=await q(e,'SELECT id,full_name FROM '+table+' WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!row)return err(404,'Data tidak ditemukan');
+  if(row.full_name===name)return j({ok:true,full_name:name});
+  await e.DB.batch([q(e,'UPDATE '+table+' SET full_name=? WHERE id=? AND unit_id=?',name,id,a.unit_id),q(e,'INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,?,?)',a.id,a.unit_id,'edit_name:'+kind,ref)]);
+  return j({ok:true,full_name:name});
+ }
+
  if(p==='/api/logout'&&m==='POST'){let t=(r.headers.get('Cookie')||'').match(/kw_session=([a-f0-9]{64})/)?.[1];if(t)await q(e,'DELETE FROM sessions WHERE token_hash=?',await hash(t)).run();return j({ok:true},200,{'Set-Cookie':'kw_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'})}
  if(p==='/api/me'&&m==='GET'){
   let member=a.member_id?await q(e,'SELECT id,member_no,full_name,joined_year,belt,status,birth_place,birth_date,gender,address,whatsapp,guardian_name,emergency_contact FROM members WHERE id=? AND unit_id=?',a.member_id,a.unit_id).first():null;
@@ -128,7 +142,7 @@ async function handleApi(r,e){
  }
  if(p==='/api/srikandi'&&m==='POST'){
   if(!admin(a))return err(403,'Akses ditolak');
-  let f=await r.formData(),name=clean(f.get('name'),120),category=clean(f.get('category'),80),wa=clean(f.get('whatsapp'),25),year=Number(f.get('joined_year'));
+  let f=await r.formData(),name=clean(f.get('name'),120).toUpperCase(),category=clean(f.get('category'),80),wa=clean(f.get('whatsapp'),25),year=Number(f.get('joined_year'));
   if(!name||!['Istri pengurus','Ibu atlet','Keluarga besar KW','Anggota Srikandi'].includes(category)||! /^\+?[0-9]{8,16}$/.test(wa)||!Number.isInteger(year)||year<1940||year>new Date().getFullYear()||f.get('consent')!=='yes')return err(400,'Periksa data dan persetujuan anggota');
   let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
   let key=rand();await photo(e,key,'PUT',img.bytes,img.type);
@@ -154,7 +168,7 @@ async function handleApi(r,e){
 
  if(p==='/api/officers/direct'&&m==='POST'){
   if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
-  let f=await r.formData(),name=clean(f.get('name'),120),wa=clean(f.get('whatsapp'),25),position=clean(f.get('position'),80),start=clean(f.get('term_start'),10),end=clean(f.get('term_end'),10);
+  let f=await r.formData(),name=clean(f.get('name'),120).toUpperCase(),wa=clean(f.get('whatsapp'),25),position=clean(f.get('position'),80),start=clean(f.get('term_start'),10),end=clean(f.get('term_end'),10);
   let dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
   if(!name||! /^\+?[0-9]{8,16}$/.test(wa)||!position||!dateOk(start)||!dateOk(end)||start>end||f.get('consent')!=='yes')return err(400,'Periksa nama, WhatsApp, jabatan, masa bakti dan persetujuan');
   let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Foto JPG, PNG atau WebP maksimal 2 MB diperlukan');
