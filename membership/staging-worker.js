@@ -47,7 +47,7 @@ async function handleApi(r,e){
  if(u.origin!==ORIGIN)return err(403,'Gunakan domain resmi');
  if(m!=='GET'&&m!=='HEAD'&&r.headers.get('Origin')!==ORIGIN)return err(403,'Origin tidak sah');
  const ip=clean(r.headers.get('CF-Connecting-IP'),80)||'unknown';
- if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.17',database:'connected',photos:'connected',registration:false,admin_only:true})}
+ if(p==='/api/health'&&m==='GET'){await q(e,'SELECT 1 AS ok').first();await e.PHOTOS.list({limit:1});await q(e,'SELECT COUNT(*) AS n FROM officers').first();await q(e,'SELECT COUNT(*) AS n FROM srikandi').first();await q(e,'SELECT COUNT(*) AS n FROM athlete_contacts').first();return j({officers:true,ok:true,version:'0.3.19',database:'connected',photos:'connected',registration:false,admin_only:true})}
  if(p==='/api/status'&&m==='GET'){let a=await q(e,"SELECT 1 AS ok FROM accounts WHERE role='super_admin' AND enabled=1 LIMIT 1").first();return j({admin_ready:!!a,registration_open:false,admin_only:true})}
 
  if(p==='/api/public/organization'&&m==='GET'){
@@ -110,6 +110,32 @@ async function handleApi(r,e){
  if(p==='/api/srikandi-logo'&&m==='GET'){let obj=await e.PHOTOS.get('brand/srikandi-logo');if(!obj)return err(404,'Logo Srikandi belum diunggah');return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
  let a=await session(e,r);if(!a)return err(401,'Silakan masuk');
 
+ if(p==='/api/directory/card-photo'&&m==='POST'){
+  if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
+  let f=await r.formData(),kind=f.get('kind'),ref=String(f.get('record_ref')||''),op=f.get('op');
+  if(!['athletes','officers','srikandi'].includes(kind)||!(kind==='officers'?/^d?[1-9]\d*$/:/^[1-9]\d*$/).test(ref)||!['get','save','replace','reset'].includes(op))return err(400,'Data tidak valid');
+  let table=kind==='srikandi'?'srikandi':kind==='officers'&&ref.startsWith('d')?'officer_direct':'members',id=Number(ref.replace(/^d/,''));
+  if(!Number.isSafeInteger(id))return err(400,'Identitas tidak valid');
+  if(kind==='officers'&&!ref.startsWith('d')){let o=await q(e,'SELECT member_id FROM officers WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!o)return err(404,'Pengurus tidak ditemukan');id=o.member_id}
+  let row=await q(e,'SELECT id,photo_key FROM '+table+' WHERE id=? AND unit_id=?',id,a.unit_id).first();if(!row)return err(404,'Data tidak ditemukan');
+  if(op==='get'){let crop=await q(e,'SELECT zoom,pan_x,pan_y FROM card_photo_crop WHERE unit_id=? AND kind=? AND record_ref=?',a.unit_id,kind,ref).first();return j({crop:crop||null})}
+  let reset=q(e,'DELETE FROM card_photo_crop WHERE unit_id=? AND kind=? AND record_ref=?',a.unit_id,kind,ref);
+  let audit=q(e,'INSERT INTO audit_log(actor_id,unit_id,action,target_id) VALUES(?,?,?,?)',a.id,a.unit_id,'card_photo:'+op+':'+kind,ref);
+  if(op==='reset'){await e.DB.batch([reset,audit]);return j({ok:true})}
+  let zoom=Number(f.get('zoom')),px=Number(f.get('pan_x')),py=Number(f.get('pan_y'));if(!Number.isFinite(zoom)||zoom<1||zoom>3||!Number.isFinite(px)||px<0||px>1||!Number.isFinite(py)||py<0||py>1)return err(400,'Pengaturan crop tidak valid');
+  let crop=q(e,'INSERT INTO card_photo_crop(unit_id,kind,record_ref,zoom,pan_x,pan_y) VALUES(?,?,?,?,?,?) ON CONFLICT(unit_id,kind,record_ref) DO UPDATE SET zoom=excluded.zoom,pan_x=excluded.pan_x,pan_y=excluded.pan_y',a.unit_id,kind,ref,zoom,px,py);
+  if(op==='save'){await e.DB.batch([crop,audit]);return j({ok:true})}
+  if(f.get('consent')!=='yes')return err(400,'Persetujuan penggantian foto diperlukan');
+  let img=await validatedImage(f.get('photo'));if(!img)return err(400,'Gunakan JPG, PNG atau WebP maksimal 2 MB');
+  let key=rand();let put=await photo(e,key,'PUT',img.bytes,img.type);if(!put.ok)return err(503,'Penyimpanan foto belum tersedia');
+  try{
+   // A replacement portrait requires fresh approval before it may appear publicly.
+   let revokes=[q(e,'DELETE FROM public_photo_approvals WHERE unit_id=? AND kind=? AND record_ref=?',a.unit_id,kind,ref)];
+   if(table==='members'){revokes.push(q(e,"DELETE FROM public_photo_approvals WHERE unit_id=? AND kind='athletes' AND record_ref=?",a.unit_id,String(id)),q(e,"DELETE FROM public_photo_approvals WHERE unit_id=? AND kind='officers' AND record_ref IN (SELECT CAST(id AS TEXT) FROM officers WHERE member_id=? AND unit_id=?)",a.unit_id,id,a.unit_id),q(e,"DELETE FROM card_photo_crop WHERE unit_id=? AND ((kind='athletes' AND record_ref=?) OR (kind='officers' AND record_ref IN (SELECT CAST(id AS TEXT) FROM officers WHERE member_id=? AND unit_id=?)))",a.unit_id,String(id),id,a.unit_id))}
+   await e.DB.batch([q(e,'UPDATE '+table+' SET photo_key=? WHERE id=? AND unit_id=?',key,id,a.unit_id),...revokes,crop,audit]);
+  }catch(ex){await photo(e,key,'DELETE');return err(503,'Foto gagal disimpan')}
+  return j({ok:true,publication_requires_review:true});
+ }
  if(p==='/api/directory/address'&&m==='POST'){
   if(!['super_admin','admin'].includes(a.role))return err(403,'Akses ditolak');
   let x=await r.json(),ref=String(x.record_ref??''),address=typeof x.address==='string'?x.address.trim():'';
